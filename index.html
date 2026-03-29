@@ -25,60 +25,127 @@
     const DROP_LETTER = 'A'
     const DROP_LINES  = 3
     const CIRCLE_R    = 72
-    const PAD         = 8   // padding around circle exclusion zone
+    const PAD         = 8   // extra padding around circle
 
-    const TEXT = `ndrey is a software developer based in Brazil. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur. Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur.`
+    const LOREM_L = `ndrey is a software developer based in Brazil, crafting digital experiences with a focus on clarity and elegance. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam eaque ipsa quae ab illo inventore veritatis. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est qui dolorem ipsum quia dolor sit amet consectetur adipisci velit sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam quis nostrum exercitationem ullam corporis suscipit laboriosam nisi ut aliquid ex ea commodi consequatur.`
+
+    const LOREM_R = `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est qui dolorem ipsum quia dolor sit amet consectetur adipisci velit sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam quis nostrum exercitationem ullam corporis suscipit laboriosam nisi ut aliquid ex ea commodi consequatur. Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur vel illum dolorem eum fugiat.`
 
     // ── State ────────────────────────────────────────────────────────────────────
-    const canvas  = document.getElementById('canvas')
-    const ctx     = canvas.getContext('2d')
+    const canvas = document.getElementById('canvas')
+    const ctx    = canvas.getContext('2d')
 
-    let prepared  = null
-    let dropCapW  = 0
-    let circle    = { x: 0, y: 0 }
-    let dragging  = false
+    let prepL    = null
+    let prepR    = null
+    let dropCapW = 0
+    let circle   = { x: 0, y: 0 }
+    let dragging = false
     let dragOX = 0, dragOY = 0
 
-    // ── Helpers ──────────────────────────────────────────────────────────────────
-    const colW  = () => (canvas.width - 2 * MARGIN_X - COL_GAP) / 2
+    const colW  = () => (canvas.width  - 2 * MARGIN_X - COL_GAP) / 2
     const colLX = () => MARGIN_X
     const colRX = () => MARGIN_X + colW() + COL_GAP
 
     /**
-     * For a text line at canvas-y `lineY` inside column [cx, cx+cw],
-     * returns the available { x, w } after excluding the circle.
+     * Draw one visual line of text inside column [cx, cx+cw] at canvas-y `y`,
+     * splitting into left and right segments when the circle intersects.
+     *
+     * Returns the new cursor, or the original cursor if the line was fully
+     * blocked (circle covers everything), or null if the text is exhausted.
      */
-    function lineSlot(lineY, cx, cw) {
-      const midY = lineY + LINE_H / 2
+    function drawLine(prep, cursor, y, cx, cw) {
+      const midY = y + LINE_H / 2
       const dy   = midY - circle.y
       const r    = CIRCLE_R + PAD
 
-      if (Math.abs(dy) >= r) return { x: cx, w: cw }
+      // ── No vertical intersection → full-width line ───────────────────────────
+      if (Math.abs(dy) >= r) {
+        const line = layoutNextLine(prep, cursor, cw)
+        if (!line) return null
+        ctx.fillText(line.text, cx, y)
+        return line.end
+      }
 
       const half   = Math.sqrt(r * r - dy * dy)
       const cirLft = circle.x - half
       const cirRgt = circle.x + half
       const cxEnd  = cx + cw
 
-      if (cirRgt <= cx || cirLft >= cxEnd) return { x: cx, w: cw }
-      if (cirLft <= cx && cirRgt >= cxEnd) return { x: cx, w: 0 }
-      if (cirLft <= cx)  return { x: cirRgt, w: Math.max(0, cxEnd - cirRgt) }
-      if (cirRgt >= cxEnd) return { x: cx,  w: Math.max(0, cirLft - cx) }
-      return { x: cx, w: Math.max(0, cirLft - cx) }
+      // ── Circle outside column horizontally → full-width line ─────────────────
+      if (cirRgt <= cx || cirLft >= cxEnd) {
+        const line = layoutNextLine(prep, cursor, cw)
+        if (!line) return null
+        ctx.fillText(line.text, cx, y)
+        return line.end
+      }
+
+      // ── Circle overlaps column — compute left and right segments ─────────────
+      const leftX = cx
+      const leftW = Math.max(0, Math.min(cirLft, cxEnd) - leftX)
+      const rgtX  = Math.max(cx, cirRgt)
+      const rgtW  = Math.max(0, cxEnd - rgtX)
+
+      // Both segments too narrow → skip line, do not consume text
+      if (leftW < 20 && rgtW < 20) return cursor
+
+      let cur = cursor
+
+      if (leftW >= 20) {
+        const line = layoutNextLine(prep, cur, leftW)
+        if (!line) return null
+        ctx.fillText(line.text, leftX, y)
+        cur = line.end
+      }
+
+      if (rgtW >= 20) {
+        const line = layoutNextLine(prep, cur, rgtW)
+        if (!line) return null
+        ctx.fillText(line.text, rgtX, y)
+        cur = line.end
+      }
+
+      return cur
+    }
+
+    function drawColumn(prep, colX, colWidth, isLeft) {
+      if (!prep) return
+
+      ctx.font         = FONT
+      ctx.fillStyle    = '#000'
+      ctx.textBaseline = 'top'
+
+      let cursor  = { segmentIndex: 0, graphemeIndex: 0 }
+      let lineIdx = 0
+      const maxY  = canvas.height - MARGIN_Y
+
+      for (let y = MARGIN_Y; y < maxY; y += LINE_H, lineIdx++) {
+        let cx = colX
+        let cw = colWidth
+
+        // Reserve drop cap space on first DROP_LINES lines of the left column
+        if (isLeft && lineIdx < DROP_LINES) {
+          const dcEnd = colX + dropCapW
+          if (cx < dcEnd) { cw -= (dcEnd - cx); cx = dcEnd }
+        }
+
+        if (cw < 20) continue
+
+        const next = drawLine(prep, cursor, y, cx, cw)
+        if (next === null) break   // text exhausted
+        cursor = next
+      }
     }
 
     // ── Render ───────────────────────────────────────────────────────────────────
     function render() {
-      if (!prepared) { requestAnimationFrame(render); return }
+      if (!prepL || !prepR) { requestAnimationFrame(render); return }
 
-      const W = canvas.width, H = canvas.height
       ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, W, H)
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-      const cw   = colW()
-      const lx   = colLX()
-      const rx   = colRX()
-      const maxY = H - MARGIN_Y
+      const cw = colW()
+      const lx = colLX()
+      const rx = colRX()
 
       // Drop cap
       const dcSize = Math.round(LINE_H * DROP_LINES * 0.88)
@@ -87,42 +154,8 @@
       ctx.textBaseline = 'top'
       ctx.fillText(DROP_LETTER, lx, MARGIN_Y - 2)
 
-      // Main text context
-      ctx.font      = FONT
-      ctx.fillStyle = '#000'
-
-      let cursor = { segmentIndex: 0, graphemeIndex: 0 }
-
-      // ─ Left column ────────────────────────────────────────────────────────────
-      let lineIdx = 0
-      for (let y = MARGIN_Y; y < maxY; y += LINE_H, lineIdx++) {
-        let { x, w } = lineSlot(y, lx, cw)
-
-        // Reserve drop cap space on the first DROP_LINES lines
-        if (lineIdx < DROP_LINES) {
-          const dcEnd = lx + dropCapW
-          if (x < dcEnd) { w -= (dcEnd - x); x = dcEnd }
-        }
-
-        if (w < 40) continue   // line fully blocked — skip without consuming text
-
-        const line = layoutNextLine(prepared, cursor, w)
-        if (!line) break
-        ctx.fillText(line.text, x, y)
-        cursor = line.end
-      }
-
-      // ─ Right column ───────────────────────────────────────────────────────────
-      for (let y = MARGIN_Y; y < maxY; y += LINE_H) {
-        const { x, w } = lineSlot(y, rx, cw)
-
-        if (w < 40) continue
-
-        const line = layoutNextLine(prepared, cursor, w)
-        if (!line) break
-        ctx.fillText(line.text, x, y)
-        cursor = line.end
-      }
+      drawColumn(prepL, lx, cw, true)
+      drawColumn(prepR, rx, cw, false)
 
       // Circle
       ctx.beginPath()
@@ -194,13 +227,13 @@
 
       await document.fonts.ready
 
-      // Measure drop cap width once
+      // Measure drop cap width once with the drop cap font
       const dcSize = Math.round(LINE_H * DROP_LINES * 0.88)
       ctx.font = `${dcSize}px Georgia`
       dropCapW = ctx.measureText(DROP_LETTER).width + 12
 
-      // Prepare text segments for layout (pretext uses canvas measureText internally)
-      prepared = prepareWithSegments(TEXT, FONT)
+      prepL = prepareWithSegments(LOREM_L, FONT)
+      prepR = prepareWithSegments(LOREM_R, FONT)
 
       render()
     }
