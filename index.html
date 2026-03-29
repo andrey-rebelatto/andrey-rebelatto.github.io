@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Andrey</title>
+  <title>About me</title>
+  <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <canvas id="canvas"></canvas>
   <script type="module">
     import { prepareWithSegments, layoutNextLine } from 'https://esm.sh/@chenglou/pretext'
-    import { initCursor, drawCursor, getCursorObstacle } from './cursor.js'
+    import { initCursor, drawCursor, getCursorObstacle } from './js/cursor.js'
 
     // ── Config ───────────────────────────────────────────────────────────────────
     const FONT_SIZE     = 17

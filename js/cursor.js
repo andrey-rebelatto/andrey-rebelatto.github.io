@@ -16,9 +16,9 @@ const IDLE_TIMEOUT  = 100
 const SLEEP_TIMEOUT = 5000
 
 const walkImg  = new Image()
-walkImg.src    = 'snorlax-walk.png'
+walkImg.src    = 'public/snorlax-walk.png'
 const sleepImg = new Image()
-sleepImg.src   = 'snorlax-sleep.png'
+sleepImg.src   = 'public/snorlax-sleep.png'
 
 let cursorX = -999, cursorY = -999
 let cursorFrame   = 0
