@@ -1,10 +1,211 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Teste</title>
-  </head>
-  <body>
-      <h1>Apenas um teste</h1>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Andrey</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #fff; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script type="module">
+    import { prepareWithSegments, layoutNextLine } from 'https://esm.sh/@chenglou/pretext'
+
+    // ── Config ──────────────────────────────────────────────────────────────────
+    const FONT_SIZE   = 17
+    const FONT        = `${FONT_SIZE}px Georgia`
+    const LINE_H      = 26
+    const MARGIN_X    = 72
+    const MARGIN_Y    = 72
+    const COL_GAP     = 48
+    const DROP_LETTER = 'A'
+    const DROP_LINES  = 3
+    const CIRCLE_R    = 72
+    const PAD         = 8   // padding around circle exclusion zone
+
+    const TEXT = `ndrey is a software developer based in Brazil. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. Ut enim ad minima veniam, quis nostrum exercitationem ullam corporis suscipit laboriosam, nisi ut aliquid ex ea commodi consequatur. Quis autem vel eum iure reprehenderit qui in ea voluptate velit esse quam nihil molestiae consequatur, vel illum qui dolorem eum fugiat quo voluptas nulla pariatur.`
+
+    // ── State ────────────────────────────────────────────────────────────────────
+    const canvas  = document.getElementById('canvas')
+    const ctx     = canvas.getContext('2d')
+
+    let prepared  = null
+    let dropCapW  = 0
+    let circle    = { x: 0, y: 0 }
+    let dragging  = false
+    let dragOX = 0, dragOY = 0
+
+    // ── Helpers ──────────────────────────────────────────────────────────────────
+    const colW  = () => (canvas.width - 2 * MARGIN_X - COL_GAP) / 2
+    const colLX = () => MARGIN_X
+    const colRX = () => MARGIN_X + colW() + COL_GAP
+
+    /**
+     * For a text line at canvas-y `lineY` inside column [cx, cx+cw],
+     * returns the available { x, w } after excluding the circle.
+     */
+    function lineSlot(lineY, cx, cw) {
+      const midY = lineY + LINE_H / 2
+      const dy   = midY - circle.y
+      const r    = CIRCLE_R + PAD
+
+      if (Math.abs(dy) >= r) return { x: cx, w: cw }
+
+      const half   = Math.sqrt(r * r - dy * dy)
+      const cirLft = circle.x - half
+      const cirRgt = circle.x + half
+      const cxEnd  = cx + cw
+
+      if (cirRgt <= cx || cirLft >= cxEnd) return { x: cx, w: cw }
+      if (cirLft <= cx && cirRgt >= cxEnd) return { x: cx, w: 0 }
+      if (cirLft <= cx)  return { x: cirRgt, w: Math.max(0, cxEnd - cirRgt) }
+      if (cirRgt >= cxEnd) return { x: cx,  w: Math.max(0, cirLft - cx) }
+      return { x: cx, w: Math.max(0, cirLft - cx) }
+    }
+
+    // ── Render ───────────────────────────────────────────────────────────────────
+    function render() {
+      if (!prepared) { requestAnimationFrame(render); return }
+
+      const W = canvas.width, H = canvas.height
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, W, H)
+
+      const cw   = colW()
+      const lx   = colLX()
+      const rx   = colRX()
+      const maxY = H - MARGIN_Y
+
+      // Drop cap
+      const dcSize = Math.round(LINE_H * DROP_LINES * 0.88)
+      ctx.font         = `${dcSize}px Georgia`
+      ctx.fillStyle    = '#000'
+      ctx.textBaseline = 'top'
+      ctx.fillText(DROP_LETTER, lx, MARGIN_Y - 2)
+
+      // Main text context
+      ctx.font      = FONT
+      ctx.fillStyle = '#000'
+
+      let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+
+      // ─ Left column ────────────────────────────────────────────────────────────
+      let lineIdx = 0
+      for (let y = MARGIN_Y; y < maxY; y += LINE_H, lineIdx++) {
+        let { x, w } = lineSlot(y, lx, cw)
+
+        // Reserve drop cap space on the first DROP_LINES lines
+        if (lineIdx < DROP_LINES) {
+          const dcEnd = lx + dropCapW
+          if (x < dcEnd) { w -= (dcEnd - x); x = dcEnd }
+        }
+
+        if (w < 40) continue   // line fully blocked — skip without consuming text
+
+        const line = layoutNextLine(prepared, cursor, w)
+        if (!line) break
+        ctx.fillText(line.text, x, y)
+        cursor = line.end
+      }
+
+      // ─ Right column ───────────────────────────────────────────────────────────
+      for (let y = MARGIN_Y; y < maxY; y += LINE_H) {
+        const { x, w } = lineSlot(y, rx, cw)
+
+        if (w < 40) continue
+
+        const line = layoutNextLine(prepared, cursor, w)
+        if (!line) break
+        ctx.fillText(line.text, x, y)
+        cursor = line.end
+      }
+
+      // Circle
+      ctx.beginPath()
+      ctx.arc(circle.x, circle.y, CIRCLE_R, 0, Math.PI * 2)
+      ctx.strokeStyle = '#000'
+      ctx.lineWidth   = 1.5
+      ctx.stroke()
+
+      requestAnimationFrame(render)
+    }
+
+    // ── Drag ─────────────────────────────────────────────────────────────────────
+    function hitCircle(px, py) {
+      const dx = px - circle.x, dy = py - circle.y
+      return Math.sqrt(dx * dx + dy * dy) <= CIRCLE_R
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      if (!hitCircle(e.clientX, e.clientY)) return
+      dragging = true
+      dragOX = e.clientX - circle.x
+      dragOY = e.clientY - circle.y
+      canvas.style.cursor = 'grabbing'
+    })
+
+    canvas.addEventListener('mousemove', e => {
+      if (dragging) {
+        circle.x = e.clientX - dragOX
+        circle.y = e.clientY - dragOY
+      } else {
+        canvas.style.cursor = hitCircle(e.clientX, e.clientY) ? 'grab' : 'default'
+      }
+    })
+
+    canvas.addEventListener('mouseup',    () => { dragging = false; canvas.style.cursor = 'default' })
+    canvas.addEventListener('mouseleave', () => { dragging = false })
+
+    canvas.addEventListener('touchstart', e => {
+      const t = e.touches[0]
+      if (!hitCircle(t.clientX, t.clientY)) return
+      dragging = true
+      dragOX = t.clientX - circle.x
+      dragOY = t.clientY - circle.y
+      e.preventDefault()
+    }, { passive: false })
+
+    canvas.addEventListener('touchmove', e => {
+      if (!dragging) return
+      const t = e.touches[0]
+      circle.x = t.clientX - dragOX
+      circle.y = t.clientY - dragOY
+      e.preventDefault()
+    }, { passive: false })
+
+    canvas.addEventListener('touchend', () => { dragging = false })
+
+    // ── Init ─────────────────────────────────────────────────────────────────────
+    function resize() {
+      canvas.width  = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+
+    window.addEventListener('resize', resize)
+
+    async function init() {
+      resize()
+      circle.x = canvas.width  / 2
+      circle.y = canvas.height / 2
+
+      await document.fonts.ready
+
+      // Measure drop cap width once
+      const dcSize = Math.round(LINE_H * DROP_LINES * 0.88)
+      ctx.font = `${dcSize}px Georgia`
+      dropCapW = ctx.measureText(DROP_LETTER).width + 12
+
+      // Prepare text segments for layout (pretext uses canvas measureText internally)
+      prepared = prepareWithSegments(TEXT, FONT)
+
+      render()
+    }
+
+    init()
+  </script>
+</body>
 </html>
